@@ -1,40 +1,49 @@
-# 此脚本复刻自primovist/snell.sh
-# 此脚本仅用于远程连接家中局域网内机器，请勿用于任何非法行为！
-## 适用于64位Linux系统。
-## 运行完毕后屏幕显示psk，默认端口号13254，按照标准填入Surge即可。
-# 请使用root用户运行
-
-Debian & Ubuntu 用户请运行
-
-```
-wget --no-check-certificate -O snell.sh https://raw.githubusercontent.com/Psukhai/snell.sh/master/snell.sh
-chmod +x snell.sh
-./snell.sh
-```
-首次安装默认端口号13254，如需修改请
-在所有脚本运行结束后运行，也可以使用vi 修改配置
-
-```
-nano /etc/snell/snell-server.conf
-systemctl restart snell
-```
-查看运行状态：
-
-```
-systemctl status snell
-```
-
-提示：增加内核缓冲区大小可以显着提高 UDP 性能：
-
-```
-sysctl -w net.core.rmem_max=26214400
-sysctl -w net.core.rmem_default=26214400
-```
-
-卸载方法：
-
-```
-wget --no-check-certificate -O uninstall-snell.sh https://raw.githubusercontent.com/Psukhai/snell.sh/master/uninstall-snell.sh
-chmod +x uninstall-snell.sh
-./uninstall-snell.sh
-```
+#!/usr/bin/env bash
+PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:~/bin
+export PATH
+CONF="/etc/snell/snell-server.conf"
+SYSTEMD="/etc/systemd/system/snell.service"
+apt-get install unzip -y
+cd ~/
+wget --no-check-certificate -O snell.zip https://github.com/surge-networks/snell/releases/download/v3.0.1/snell-server-v3.0.1-linux-amd64.zip
+unzip -o snell.zip
+ rm -f snell.zip
+ chmod +x snell-server
+ mv -f snell-server /usr/local/bin/
+ if [ -f ${CONF} ]; then
+   echo "Found existing config..."
+   else
+   if [ -z ${PSK} ]; then
+     PSK=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 16)
+     echo "Using generated PSK: ${PSK}"
+   else
+     echo "Using predefined PSK: ${PSK}"
+   fi
+   mkdir /etc/snell/
+   echo "Generating new config..."
+   echo "[snell-server]" >>${CONF}
+   echo "listen = 0.0.0.0:13254" >>${CONF}
+   echo "psk = ${PSK}" >>${CONF}
+   echo "obfs = tls" >>${CONF}
+ fi
+ if [ -f ${SYSTEMD} ]; then
+   echo "Found existing service..."
+   systemctl daemon-reload
+   systemctl restart snell
+ else
+   echo "Generating new service..."
+   echo "[Unit]" >>${SYSTEMD}
+   echo "Description=Snell Proxy Service" >>${SYSTEMD}
+   echo "After=network.target" >>${SYSTEMD}
+   echo "" >>${SYSTEMD}
+   echo "[Service]" >>${SYSTEMD}
+   echo "Type=simple" >>${SYSTEMD}
+   echo "LimitNOFILE=32768" >>${SYSTEMD}
+   echo "ExecStart=/usr/local/bin/snell-server -c /etc/snell/snell-server.conf" >>${SYSTEMD}
+   echo "" >>${SYSTEMD}
+   echo "[Install]" >>${SYSTEMD}
+   echo "WantedBy=multi-user.target" >>${SYSTEMD}
+   systemctl daemon-reload
+   systemctl enable snell
+   systemctl start snell
+ fi
